@@ -15,3 +15,5 @@
    1.3 Torneios com problemas: -completado
     - round_robin: Ainda não declara um campeao e fica Status: ongoing -completado
     - ladder: Não tem final de rodadas (pode determinar um campo com maximo de rodadas, minimo 4) e a não tem função de empati. -completado
+
+1.4 ladder: A função de rodas não está tendo efeito, quando eu coloco mais rodas, exemplo 5, 6 ou 10 ela executa apenas 4 rodadas. -completado

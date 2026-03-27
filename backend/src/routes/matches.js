@@ -202,14 +202,17 @@ router.put('/:id/result', auth(['admin', 'organizer']), async (req, res) => {
       }
     }
 
+    // Recarrega o torneio para garantir ladder_max_rounds atualizado
+    const freshTournament = await Tournament.findById(match.tournament);
+    const maxRounds = Math.max(4, freshTournament.ladder_max_rounds || 4);
+
     // Ao completar toda a rodada, verifica se atingiu o máximo de rodadas
     const roundMatches = await Match.find({ tournament: match.tournament, round: match.round });
     if (roundMatches.every(m => m.status === 'completed')) {
-      const maxRounds = tournament.ladder_max_rounds || 4;
       if (match.round >= maxRounds) {
         await Tournament.findByIdAndUpdate(match.tournament, { status: 'closed' });
       } else {
-        const updatedRanking = tournament.ladder_ranking.map(String);
+        const updatedRanking = freshTournament.ladder_ranking.map(String);
         const nextRound = match.round + 1;
         const nextMatches = [];
         const offset = (match.round % 2 === 0) ? 0 : 1;
@@ -282,9 +285,10 @@ router.post('/generate/:tournamentId', auth(['admin', 'organizer']), async (req,
     }
 
   } else if (type === 'ladder') {
-    const maxRounds = Math.max(4, parseInt(req.body.ladder_max_rounds) || 4);
-    await Tournament.findByIdAndUpdate(tournament._id, { ladder_max_rounds: maxRounds });
+    // ladder_max_rounds já foi salvo na criação do torneio — usa o valor existente (mínimo 4)
+    const maxRounds = Math.max(4, tournament.ladder_max_rounds || 4);
     tournament.ladder_ranking = [...players];
+    tournament.ladder_max_rounds = maxRounds;
     await tournament.save();
     for (let i = 0; i < players.length - 1; i += 2)
       matches.push({ tournament: tournament._id, playerA: players[i], playerB: players[i + 1], round: 1 });
