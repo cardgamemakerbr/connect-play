@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const Tournament = require('../models/Tournament');
 const auth = require('../middlewares/auth');
+const { notify } = require('../services/notifications');
 
 router.get('/', async (req, res) => {
   const tournaments = await Tournament.find()
@@ -13,6 +14,10 @@ router.get('/', async (req, res) => {
 router.post('/', auth(['admin', 'organizer']), async (req, res) => {
   try {
     const tournament = await Tournament.create({ ...req.body, organizer: req.user.id });
+    // Notifica todos os usuários sobre o novo torneio
+    const User = require('../models/User');
+    const users = await User.find({}, '_id');
+    await notify(users.map(u => u._id), 'tournament', '🏆 Novo torneio disponível!', `O torneio "${tournament.name}" (${tournament.type}) está aberto para inscrições!`, '/tournaments');
     res.status(201).json(tournament);
   } catch (e) {
     res.status(400).json({ message: e.message });

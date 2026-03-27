@@ -8,6 +8,6 @@
 1.3 Criar a função de partida, dependedo do tipo de torneio -completado
 
 1.4 Colocar uma descrição explicando como funciona o torneio selecionado -completado
-    - Ao selecionar um tipo de torneio deve aparecer a descrição do torneio em um painel logo abaixo.
+    - Ao selecionar um tipo de torneio deve aparecer a descrição do torneio em um painel logo abaixo.-completado
 
 1.5 Criar as regras de negocio de cada tipo de torneio seguindo o arquivo de roteiro. -completado

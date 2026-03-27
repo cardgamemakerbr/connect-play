@@ -1,0 +1,18 @@
+# CONNECT-PLAY vs 1.0.1
+---
+
+
+
+# corrigir
+
+1.1. ao clincar em inscrição em um torneio já inscrito aparece a mensagem de erro
+
+Uncaught runtime errors:
+×
+ERROR
+Request failed with status code 400
+AxiosError: Request failed with status code 400
+    at settle (http://localhost:3000/static/js/bundle.js:47350:12)
+    at XMLHttpRequest.onloadend (http://localhost:3000/static/js/bundle.js:45964:66)
+    at Axios.request (http://localhost:3000/static/js/bundle.js:46464:41)
+    at async join (http://localhost:3000/static/js/bundle.js:1494:5)

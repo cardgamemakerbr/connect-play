@@ -95,3 +95,86 @@ Ideal para: Clubes de jogos ou comunidades locais que se encontram toda semana.
 - Mensageria: RabbitMQ
 - Deploy: docker-compose
 
+----------------------------------------------------------------------
+
+# Estrutura de Torneios - Exemplos Práticos
+**Participantes:** Teste 1, Teste 2, Teste 3, Teste 4, Teste 5, Teste 6, Teste 7 e Teste 8.
+
+---
+
+## 1. Eliminatória Simples (Mata-mata)
+*Formato de exclusão imediata.*
+
+### Quartas de Final
+* **Jogo 1:** Teste 1 vs **Teste 2**
+* **Jogo 2:** Teste 3 vs **Teste 4**
+* **Jogo 3:** **Teste 5** vs Teste 6
+* **Jogo 4:** Teste 7 vs **Teste 8**
+
+### Semifinais
+* **Semi 1:** Teste 2 vs **Teste 4**
+* **Semi 2:** **Teste 5** vs Teste 8
+
+### Final
+* **Grande Final:** Teste 4 vs **Teste 5**
+* **Campeão:** 🏆 **Teste 5**
+
+---
+
+## 2. Eliminatória Dupla
+*Exemplo do caminho de um jogador pela repescagem.*
+
+1.  **Rodada 1 (Chave Principal):** Teste 1 perde para Teste 2.
+2.  **Chave Inferior (Losers):** Teste 1 vence Teste 3, Teste 4 e Teste 8.
+3.  **Final da Repescagem:** Teste 1 vence Teste 2 (sua revanche).
+4.  **Grande Final:** Teste 1 enfrenta o campeão da chave invicta (Teste 5).
+    * *Nota: Teste 1 precisa vencer dois jogos seguidos de Teste 5 para ser campeão.*
+
+---
+
+## 3. Sistema Suíço
+*Simulação de Pareamento (Exemplo: 3 Rodadas)*
+
+| Rodada | Confronto | Critério | Resultado |
+| :--- | :--- | :--- | :--- |
+| **R1** | Teste 1 vs Teste 2 | Aleatório (todos 0-0) | Teste 1 vence (3 pts) |
+| **R2** | Teste 1 vs Teste 3 | Vencedores vs Vencedores | Teste 1 vence (6 pts) |
+| **R3** | Teste 1 vs Teste 5 | Invicto vs Invicto | Empate (Teste 1: 7 pts) |
+
+---
+
+## 4. Round Robin (Todos contra Todos)
+*Exemplo de uma rodada em um grupo de 4 pessoas.*
+
+**Grupo A:** Teste 1, Teste 2, Teste 3, Teste 4.
+
+* **Rodada 1:** Teste 1 x Teste 2 | Teste 3 x Teste 4
+* **Rodada 2:** Teste 1 x Teste 3 | Teste 2 x Teste 4
+* **Rodada 3:** Teste 1 x Teste 4 | Teste 2 x Teste 3
+
+*Vence quem somar mais pontos após todos os confrontos.*
+
+---
+
+## 5. Formatos de Seleção (Draft e Selado)
+*Foco na aquisição de recursos.*
+
+* **Exemplo Draft:**
+    * Os 8 jogadores sentam em círculo.
+    * **Teste 1** abre um pack, escolhe uma carta e passa o resto para **Teste 2**.
+    * Isso se repete até que todos tenham cartas suficientes para montar seus decks.
+* **Exemplo Selado:**
+    * **Teste 1** a **Teste 8** recebem, cada um, 6 envelopes fechados.
+    * Eles têm tempo fixo para construir o deck apenas com o conteúdo sorteado.
+
+---
+
+## 6. Sistema de Escada (Ladder)
+*Ranking Dinâmico.*
+
+1.  **Posição 01:** Teste 8
+2.  **Posição 02:** Teste 5
+3.  **Posição 03:** Teste 2
+4.  **Ação:** **Teste 2** desafia **Teste 8**.
+5.  **Resultado:** Teste 2 vence e "rouba" o topo.
+6.  **Novo Ranking:** 1º Teste 2, 2º Teste 8, 3º Teste 5.

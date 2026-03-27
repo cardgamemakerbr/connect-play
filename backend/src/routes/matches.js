@@ -2,6 +2,7 @@ const router = require('express').Router();
 const Match = require('../models/Match');
 const auth = require('../middlewares/auth');
 const { publish } = require('../services/rabbitmq');
+const { notify } = require('../services/notifications');
 
 // Calcula tabela de pontos de um torneio
 async function calcPoints(tournamentId, participants) {
@@ -82,7 +83,17 @@ router.put('/:id/result', auth(['admin', 'organizer']), async (req, res) => {
   await match.save();
   await publish('match.result', { matchId: match._id, winner: winnerId, draw: isDraw });
 
+  // Notifica os dois jogadores sobre o resultado
   const tournament = await Tournament.findById(match.tournament);
+  const resultText = isDraw ? 'Empate!' : `Vencedor: ${winnerId}`;
+  await notify(
+    [String(match.playerA), String(match.playerB)],
+    'result',
+    '⚔️ Resultado registrado',
+    `Uma partida do torneio "${tournament.name}" foi finalizada. ${isDraw ? '🤝 Empate!' : '🏆 Resultado disponível!'}`,
+    `/tournaments/${tournament._id}/matches`
+  );
+
   const type = tournament.type;
 
   // ── SINGLE ELIMINATION / DRAFT / SEALED ─────────────────────────────────────
@@ -298,6 +309,15 @@ router.post('/generate/:tournamentId', auth(['admin', 'organizer']), async (req,
     return res.status(400).json({ message: 'Não foi possível gerar partidas para este formato' });
 
   await Tournament.findByIdAndUpdate(tournament._id, { status: 'ongoing' });
+
+  // Notifica todos os participantes que as partidas foram geradas
+  await notify(
+    players.map(String),
+    'match',
+    '⚔️ Partidas geradas!',
+    `As partidas do torneio "${tournament.name}" foram geradas. Confira seu confronto!`,
+    `/tournaments/${tournament._id}/matches`
+  );
 
   const created = await Match.insertMany(matches);
   for (const m of created)
