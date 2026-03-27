@@ -5,6 +5,7 @@ const matchSchema = new mongoose.Schema({
   playerA: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   playerB: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   winner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  draw: { type: Boolean, default: false },
   scheduledAt: Date,
   round: Number,
   bracket: { type: String, enum: ['winners', 'losers', 'grand_final'], default: 'winners' },

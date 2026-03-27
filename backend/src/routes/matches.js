@@ -3,11 +3,59 @@ const Match = require('../models/Match');
 const auth = require('../middlewares/auth');
 const { publish } = require('../services/rabbitmq');
 
+// Calcula tabela de pontos de um torneio
+async function calcPoints(tournamentId, participants) {
+  const allMatches = await Match.find({ tournament: tournamentId, status: 'completed' });
+  const points = {};
+  const wins = {};
+  const draws = {};
+  const losses = {};
+  participants.forEach(p => {
+    const k = String(p);
+    points[k] = 0; wins[k] = 0; draws[k] = 0; losses[k] = 0;
+  });
+  allMatches.forEach(m => {
+    if (m.draw) {
+      points[String(m.playerA)] = (points[String(m.playerA)] || 0) + 1;
+      points[String(m.playerB)] = (points[String(m.playerB)] || 0) + 1;
+      draws[String(m.playerA)] = (draws[String(m.playerA)] || 0) + 1;
+      draws[String(m.playerB)] = (draws[String(m.playerB)] || 0) + 1;
+    } else if (m.winner) {
+      const loserId = String(m.playerA) === String(m.winner) ? String(m.playerB) : String(m.playerA);
+      points[String(m.winner)] = (points[String(m.winner)] || 0) + 3;
+      wins[String(m.winner)] = (wins[String(m.winner)] || 0) + 1;
+      losses[loserId] = (losses[loserId] || 0) + 1;
+    }
+  });
+  return { points, wins, draws, losses };
+}
+
 router.get('/tournament/:tournamentId', auth(), async (req, res) => {
+  const Tournament = require('../models/Tournament');
   const matches = await Match.find({ tournament: req.params.tournamentId })
     .populate('playerA playerB winner', 'name login')
     .sort({ round: 1, bracket: 1 });
-  res.json(matches);
+
+  const tournament = await Tournament.findById(req.params.tournamentId)
+    .populate('participants', 'name login')
+    .populate('ladder_ranking', 'name login');
+
+  // Inclui tabela de pontos para swiss, round_robin e ladder
+  let scoreboard = null;
+  if (tournament && ['swiss', 'round_robin', 'ladder'].includes(tournament.type)) {
+    const { points, wins, draws, losses } = await calcPoints(req.params.tournamentId, tournament.participants);
+    scoreboard = tournament.participants.map(p => ({
+      _id: p._id,
+      login: p.login,
+      name: p.name,
+      points: points[String(p._id)] || 0,
+      wins: wins[String(p._id)] || 0,
+      draws: draws[String(p._id)] || 0,
+      losses: losses[String(p._id)] || 0,
+    })).sort((a, b) => b.points - a.points);
+  }
+
+  res.json({ matches, scoreboard, tournament });
 });
 
 router.post('/', auth(['admin', 'organizer']), async (req, res) => {
@@ -16,7 +64,7 @@ router.post('/', auth(['admin', 'organizer']), async (req, res) => {
   res.status(201).json(match);
 });
 
-// Registrar resultado e avançar etapas automaticamente
+// Registrar resultado (com suporte a empate) e avançar etapas
 router.put('/:id/result', auth(['admin', 'organizer']), async (req, res) => {
   const Tournament = require('../models/Tournament');
 
@@ -24,31 +72,27 @@ router.put('/:id/result', auth(['admin', 'organizer']), async (req, res) => {
   if (!match) return res.status(404).json({ message: 'Match not found' });
   if (match.status === 'completed') return res.status(400).json({ message: 'Partida já finalizada' });
 
-  const winnerId = req.body.winner;
-  const loserId = String(match.playerA) === String(winnerId)
-    ? String(match.playerB)
-    : String(match.playerA);
+  const isDraw = req.body.draw === true;
+  const winnerId = isDraw ? null : req.body.winner;
+  const loserId = isDraw ? null : (String(match.playerA) === String(winnerId) ? String(match.playerB) : String(match.playerA));
 
-  match.winner = winnerId;
+  match.winner = winnerId || undefined;
+  match.draw = isDraw;
   match.status = 'completed';
   await match.save();
-  await publish('match.result', { matchId: match._id, winner: winnerId });
+  await publish('match.result', { matchId: match._id, winner: winnerId, draw: isDraw });
 
   const tournament = await Tournament.findById(match.tournament);
   const type = tournament.type;
 
-  // ── SINGLE ELIMINATION ──────────────────────────────────────────────────────
+  // ── SINGLE ELIMINATION / DRAFT / SEALED ─────────────────────────────────────
   if (type === 'single_elimination' || type === 'draft' || type === 'sealed') {
     const roundMatches = await Match.find({ tournament: match.tournament, round: match.round });
-    const allDone = roundMatches.every(m => m.status === 'completed');
-
-    if (allDone) {
+    if (roundMatches.every(m => m.status === 'completed')) {
       const winners = roundMatches.map(m => String(m.winner));
       if (winners.length === 1) {
-        // Campeão definido — fecha torneio
         await Tournament.findByIdAndUpdate(match.tournament, { status: 'closed' });
       } else {
-        // Gera próxima rodada com os vencedores
         const nextRound = match.round + 1;
         const nextMatches = [];
         for (let i = 0; i < winners.length; i += 2)
@@ -60,137 +104,118 @@ router.put('/:id/result', auth(['admin', 'organizer']), async (req, res) => {
     }
   }
 
-  // ── DOUBLE ELIMINATION ──────────────────────────────────────────────────────
+  // ── DOUBLE ELIMINATION ───────────────────────────────────────────────────────
   else if (type === 'double_elimination') {
-    const roundWinnersMatches = await Match.find({ tournament: match.tournament, round: match.round, bracket: 'winners' });
-    const roundLosersMatches = await Match.find({ tournament: match.tournament, round: match.round, bracket: 'losers' });
-    const allWinnersDone = roundWinnersMatches.every(m => m.status === 'completed');
-    const allLosersDone = roundLosersMatches.length === 0 || roundLosersMatches.every(m => m.status === 'completed');
-
-    if (match.bracket === 'winners') {
-      // Perdedor vai para chave de perdedores
+    if (match.bracket === 'winners' && loserId) {
       const existingLosers = await Match.find({ tournament: match.tournament, bracket: 'losers' });
-      const losersRound = existingLosers.length > 0 ? Math.max(...existingLosers.map(m => m.round)) + 1 : match.round;
-
-      // Verifica se há outro perdedor aguardando na chave losers sem par
-      const pendingLoser = await Match.findOne({
-        tournament: match.tournament,
-        bracket: 'losers',
-        status: 'scheduled',
-        playerB: null,
-      });
-
-      if (pendingLoser) {
-        pendingLoser.playerB = loserId;
-        await pendingLoser.save();
+      const losersRound = existingLosers.length > 0 ? Math.max(...existingLosers.map(m => m.round)) : match.round;
+      const unpaired = existingLosers.find(m => m.status === 'scheduled' && (!m.playerB || String(m.playerB) === String(m.playerA)));
+      if (unpaired) {
+        unpaired.playerB = loserId;
+        await unpaired.save();
       } else {
-        // Cria slot aguardando próximo perdedor (playerB será preenchido depois)
-        // Para simplificar: se já há perdedores suficientes, emparelha imediatamente
-        const losersPending = await Match.find({ tournament: match.tournament, bracket: 'losers', status: 'scheduled' });
-        const unpaired = losersPending.find(m => !m.playerB || String(m.playerB) === String(m.playerA));
-        if (unpaired) {
-          unpaired.playerB = loserId;
-          await unpaired.save();
-        } else {
-          await Match.create({ tournament: match.tournament, playerA: loserId, playerB: loserId, round: losersRound, bracket: 'losers' });
-        }
+        await Match.create({ tournament: match.tournament, playerA: loserId, playerB: loserId, round: losersRound + 1, bracket: 'losers' });
       }
     }
 
-    if (allWinnersDone && allLosersDone) {
-      const winnersWinners = roundWinnersMatches.map(m => String(m.winner));
-      const losersWinners = roundLosersMatches.map(m => String(m.winner));
+    const roundWinners = await Match.find({ tournament: match.tournament, round: match.round, bracket: 'winners' });
+    const roundLosers = await Match.find({ tournament: match.tournament, round: match.round, bracket: 'losers' });
+    const allDone = [...roundWinners, ...roundLosers].every(m => m.status === 'completed');
 
-      if (winnersWinners.length === 1 && losersWinners.length === 1) {
-        // Grand Final
+    if (allDone) {
+      const ww = roundWinners.map(m => String(m.winner)).filter(Boolean);
+      const lw = roundLosers.map(m => String(m.winner)).filter(Boolean);
+      if (ww.length === 1 && lw.length === 1) {
         const gf = await Match.findOne({ tournament: match.tournament, bracket: 'grand_final' });
-        if (!gf) {
-          await Match.create({ tournament: match.tournament, playerA: winnersWinners[0], playerB: losersWinners[0], round: match.round + 1, bracket: 'grand_final' });
-        }
-      } else {
-        // Próxima rodada winners
+        if (!gf)
+          await Match.create({ tournament: match.tournament, playerA: ww[0], playerB: lw[0], round: match.round + 1, bracket: 'grand_final' });
+      } else if (ww.length > 1) {
         const nextRound = match.round + 1;
-        for (let i = 0; i < winnersWinners.length - 1; i += 2)
-          await Match.create({ tournament: match.tournament, playerA: winnersWinners[i], playerB: winnersWinners[i + 1], round: nextRound, bracket: 'winners' });
+        for (let i = 0; i < ww.length - 1; i += 2)
+          await Match.create({ tournament: match.tournament, playerA: ww[i], playerB: ww[i + 1], round: nextRound, bracket: 'winners' });
       }
     }
 
-    // Grand final concluída
-    if (match.bracket === 'grand_final') {
+    if (match.bracket === 'grand_final')
       await Tournament.findByIdAndUpdate(match.tournament, { status: 'closed' });
+  }
+
+  // ── SWISS ────────────────────────────────────────────────────────────────────
+  else if (type === 'swiss') {
+    const roundMatches = await Match.find({ tournament: match.tournament, round: match.round });
+    if (roundMatches.every(m => m.status === 'completed')) {
+      const maxRounds = tournament.swiss_rounds || Math.ceil(Math.log2(tournament.participants.length));
+      if (match.round >= maxRounds) {
+        // Torneio encerrado — tabela final calculada no GET
+        await Tournament.findByIdAndUpdate(match.tournament, { status: 'closed' });
+      } else {
+        const allMatches = await Match.find({ tournament: match.tournament, status: 'completed' });
+        const { points } = await calcPoints(match.tournament, tournament.participants);
+        const played = new Set(allMatches.map(m => [String(m.playerA), String(m.playerB)].sort().join('|')));
+        const sorted = Object.entries(points).sort((a, b) => b[1] - a[1]).map(e => e[0]);
+
+        const nextRound = match.round + 1;
+        const paired = new Set();
+        const nextMatches = [];
+        for (let i = 0; i < sorted.length; i++) {
+          if (paired.has(sorted[i])) continue;
+          for (let j = i + 1; j < sorted.length; j++) {
+            if (paired.has(sorted[j])) continue;
+            const key = [sorted[i], sorted[j]].sort().join('|');
+            if (!played.has(key)) {
+              nextMatches.push({ tournament: match.tournament, playerA: sorted[i], playerB: sorted[j], round: nextRound });
+              paired.add(sorted[i]);
+              paired.add(sorted[j]);
+              break;
+            }
+          }
+        }
+        if (nextMatches.length > 0) {
+          const created = await Match.insertMany(nextMatches);
+          for (const m of created)
+            await publish('match.scheduled', { matchId: m._id, tournament: m.tournament, playerA: m.playerA, playerB: m.playerB, round: m.round });
+        }
+      }
     }
   }
 
-  // ── SWISS ───────────────────────────────────────────────────────────────────
-  else if (type === 'swiss') {
-    const roundMatches = await Match.find({ tournament: match.tournament, round: match.round });
-    const allDone = roundMatches.every(m => m.status === 'completed');
+  // ── ROUND ROBIN ──────────────────────────────────────────────────────────────
+  else if (type === 'round_robin') {
+    const allMatches = await Match.find({ tournament: match.tournament });
+    if (allMatches.every(m => m.status === 'completed'))
+      await Tournament.findByIdAndUpdate(match.tournament, { status: 'closed' });
+  }
 
-    if (allDone) {
-      // Calcula pontuação: vitória = 3pts, empate não existe aqui
-      const allMatches = await Match.find({ tournament: match.tournament, status: 'completed' });
-      const points = {};
-      tournament.participants.forEach(p => { points[String(p)] = 0; });
-      allMatches.forEach(m => { if (m.winner) points[String(m.winner)] = (points[String(m.winner)] || 0) + 3; });
-
-      // Ordena por pontuação e emparelha adjacentes (sem repetir confrontos)
-      const played = new Set(allMatches.map(m => [String(m.playerA), String(m.playerB)].sort().join('|')));
-      const sorted = Object.entries(points).sort((a, b) => b[1] - a[1]).map(e => e[0]);
-
-      const nextRound = match.round + 1;
-      const paired = new Set();
-      const nextMatches = [];
-
-      for (let i = 0; i < sorted.length; i++) {
-        if (paired.has(sorted[i])) continue;
-        for (let j = i + 1; j < sorted.length; j++) {
-          if (paired.has(sorted[j])) continue;
-          const key = [sorted[i], sorted[j]].sort().join('|');
-          if (!played.has(key)) {
-            nextMatches.push({ tournament: match.tournament, playerA: sorted[i], playerB: sorted[j], round: nextRound });
-            paired.add(sorted[i]);
-            paired.add(sorted[j]);
-            break;
-          }
-        }
+  // ── LADDER ───────────────────────────────────────────────────────────────────
+  else if (type === 'ladder') {
+    // Atualiza ranking
+    const ranking = tournament.ladder_ranking.map(String);
+    if (winnerId && loserId) {
+      const winnerPos = ranking.indexOf(String(winnerId));
+      const loserPos = ranking.indexOf(String(loserId));
+      if (winnerPos > loserPos) {
+        ranking[winnerPos] = String(loserId);
+        ranking[loserPos] = String(winnerId);
+        tournament.ladder_ranking = ranking;
+        await tournament.save();
       }
+    }
 
+    // Ao completar toda a rodada, gera nova rodada com pares adjacentes do ranking atualizado
+    const roundMatches = await Match.find({ tournament: match.tournament, round: match.round });
+    if (roundMatches.every(m => m.status === 'completed')) {
+      const updatedRanking = tournament.ladder_ranking.map(String);
+      const nextRound = match.round + 1;
+      const nextMatches = [];
+      // Alterna o offset a cada rodada para que todos se enfrentem ao longo do tempo
+      const offset = (match.round % 2 === 0) ? 0 : 1;
+      for (let i = offset; i < updatedRanking.length - 1; i += 2)
+        nextMatches.push({ tournament: match.tournament, playerA: updatedRanking[i], playerB: updatedRanking[i + 1], round: nextRound });
       if (nextMatches.length > 0) {
         const created = await Match.insertMany(nextMatches);
         for (const m of created)
           await publish('match.scheduled', { matchId: m._id, tournament: m.tournament, playerA: m.playerA, playerB: m.playerB, round: m.round });
       }
-    }
-  }
-
-  // ── LADDER ──────────────────────────────────────────────────────────────────
-  else if (type === 'ladder') {
-    // Inicializa ranking se vazio
-    if (!tournament.ladder_ranking || tournament.ladder_ranking.length === 0) {
-      tournament.ladder_ranking = [...tournament.participants];
-      await tournament.save();
-    }
-
-    const ranking = tournament.ladder_ranking.map(String);
-    const winnerPos = ranking.indexOf(String(winnerId));
-    const loserPos = ranking.indexOf(String(loserId));
-
-    // Se vencedor estava abaixo do perdedor, troca posições
-    if (winnerPos > loserPos) {
-      ranking[winnerPos] = String(loserId);
-      ranking[loserPos] = String(winnerId);
-      tournament.ladder_ranking = ranking;
-      await tournament.save();
-    }
-  }
-
-  // ── ROUND ROBIN ─────────────────────────────────────────────────────────────
-  // Round robin não gera novas etapas — todas as partidas já foram criadas de uma vez.
-  // Ao completar todas, fecha o torneio.
-  else if (type === 'round_robin') {
-    const allMatches = await Match.find({ tournament: match.tournament });
-    if (allMatches.every(m => m.status === 'completed')) {
-      await Tournament.findByIdAndUpdate(match.tournament, { status: 'closed' });
     }
   }
 
@@ -228,17 +253,30 @@ router.post('/generate/:tournamentId', auth(['admin', 'organizer']), async (req,
       matches.push({ tournament: tournament._id, playerA: seeded[i], playerB: seeded[i + 1], round: 1, bracket: 'winners' });
 
   } else if (type === 'swiss') {
+    // Define número de rodadas: ceil(log2(n))
+    const swissRounds = Math.ceil(Math.log2(players.length));
+    await Tournament.findByIdAndUpdate(tournament._id, { swiss_rounds: swissRounds });
     const seeded = shuffle(players);
     for (let i = 0; i < seeded.length - 1; i += 2)
       matches.push({ tournament: tournament._id, playerA: seeded[i], playerB: seeded[i + 1], round: 1 });
 
   } else if (type === 'round_robin') {
-    for (let i = 0; i < players.length; i++)
-      for (let j = i + 1; j < players.length; j++)
-        matches.push({ tournament: tournament._id, playerA: players[i], playerB: players[j], round: 1 });
+    // Algoritmo circle method — gera rodadas balanceadas
+    const n = players.length;
+    const rounds = n % 2 === 0 ? n - 1 : n;
+    const list = [...players];
+    if (n % 2 !== 0) list.push(null); // bye
+    const half = list.length / 2;
+    for (let r = 0; r < rounds; r++) {
+      for (let i = 0; i < half; i++) {
+        const a = list[i];
+        const b = list[list.length - 1 - i];
+        if (a && b) matches.push({ tournament: tournament._id, playerA: a, playerB: b, round: r + 1 });
+      }
+      list.splice(1, 0, list.pop());
+    }
 
   } else if (type === 'ladder') {
-    // Inicializa ranking e cria partidas da rodada 1
     tournament.ladder_ranking = [...players];
     await tournament.save();
     for (let i = 0; i < players.length - 1; i += 2)
@@ -248,7 +286,6 @@ router.post('/generate/:tournamentId', auth(['admin', 'organizer']), async (req,
   if (matches.length === 0)
     return res.status(400).json({ message: 'Não foi possível gerar partidas para este formato' });
 
-  // Muda status do torneio para ongoing
   await Tournament.findByIdAndUpdate(tournament._id, { status: 'ongoing' });
 
   const created = await Match.insertMany(matches);

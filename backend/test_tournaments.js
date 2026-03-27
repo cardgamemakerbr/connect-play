@@ -128,8 +128,9 @@ async function run() {
   console.log('\n6. Verificando partidas criadas...');
   for (const t of tournamentIds) {
     try {
-      const matches = await request('GET', `/matches/tournament/${t.id}`, null, adminToken);
-      console.log(`  ✓ ${t.type}: ${matches.length} partida(s)`);
+      const r = await request('GET', `/matches/tournament/${t.id}`, null, adminToken);
+      const count = Array.isArray(r) ? r.length : (r.matches?.length ?? 0);
+      console.log(`  ✓ ${t.type}: ${count} partida(s)`);
     } catch {
       console.log(`  ✗ ${t.type}: erro ao buscar partidas`);
     }
