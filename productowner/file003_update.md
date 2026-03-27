@@ -1,2 +1,13 @@
 # CONNECT-PLAY vs 1.1.1
 ---
+
+1.1 Lista todos os participantes de um torneio -completado
+
+1.2 Sendo organizado ou admin, pode editar os participantes (adicionar ou emover) -completado
+
+1.3 Criar a função de partida, dependedo do tipo de torneio -completado
+
+1.4 Colocar uma descrição explicando como funciona o torneio selecionado -completado
+    - Ao selecionar um tipo de torneio deve aparecer a descrição do torneio em um painel logo abaixo.
+
+1.5 Criar as regras de negocio de cada tipo de torneio seguindo o arquivo de roteiro. -completado

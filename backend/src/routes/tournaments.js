@@ -3,7 +3,9 @@ const Tournament = require('../models/Tournament');
 const auth = require('../middlewares/auth');
 
 router.get('/', async (req, res) => {
-  const tournaments = await Tournament.find().populate('organizer', 'name');
+  const tournaments = await Tournament.find()
+    .populate('organizer', 'name')
+    .populate('participants', 'name login');
   res.json(tournaments);
 });
 
@@ -38,6 +40,29 @@ router.post('/:id/join', auth(), async (req, res) => {
   tournament.participants.push(req.user.id);
   await tournament.save();
   res.json({ message: 'Registered successfully' });
+});
+
+// Adicionar participante (admin/organizer)
+router.post('/:id/participants', auth(['admin', 'organizer']), async (req, res) => {
+  const { userId } = req.body;
+  const tournament = await Tournament.findById(req.params.id);
+  if (!tournament) return res.status(404).json({ message: 'Tournament not found' });
+  if (tournament.participants.map(String).includes(String(userId)))
+    return res.status(400).json({ message: 'Already registered' });
+  if (tournament.maxParticipants && tournament.participants.length >= tournament.maxParticipants)
+    return res.status(400).json({ message: 'Tournament full' });
+  tournament.participants.push(userId);
+  await tournament.save();
+  res.json({ message: 'Participant added' });
+});
+
+// Remover participante (admin/organizer)
+router.delete('/:id/participants/:userId', auth(['admin', 'organizer']), async (req, res) => {
+  const tournament = await Tournament.findById(req.params.id);
+  if (!tournament) return res.status(404).json({ message: 'Tournament not found' });
+  tournament.participants = tournament.participants.filter(p => String(p) !== req.params.userId);
+  await tournament.save();
+  res.json({ message: 'Participant removed' });
 });
 
 module.exports = router;
