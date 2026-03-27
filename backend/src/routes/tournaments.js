@@ -23,7 +23,7 @@ router.put('/:id', auth(['admin', 'organizer']), async (req, res) => {
   res.json(tournament);
 });
 
-router.delete('/:id', auth(['admin', 'organizer']), async (req, res) => {
+router.delete('/:id', auth(['admin']), async (req, res) => {
   await Tournament.findByIdAndDelete(req.params.id);
   res.json({ message: 'Tournament deleted' });
 });

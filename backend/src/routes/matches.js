@@ -36,9 +36,9 @@ router.post('/generate/:tournamentId', auth(['admin', 'organizer']), async (req,
 
   const type = tournament.type;
   const matches = [];
-  const shuffle = arr => arr.sort(() => Math.random() - 0.5);
+  const shuffle = arr => [...arr].sort(() => Math.random() - 0.5);
 
-  // Verifica se já existem partidas na rodada 1
+  // Bloqueia geração duplicada
   const existing = await Match.findOne({ tournament: tournament._id, round: 1 });
   if (existing) return res.status(400).json({ message: 'Partidas já foram geradas para este torneio' });
 
@@ -52,34 +52,31 @@ router.post('/generate/:tournamentId', auth(['admin', 'organizer']), async (req,
       matches.push({ tournament: tournament._id, playerA: seeded[i], playerB: seeded[i + 1], round: 1 });
 
   } else if (type === 'double_elimination') {
-    // Mesma lógica do single para rodada 1; perdedores vão para chave de perdedores (gerenciado manualmente)
-    if (players.length < 2)
-      return res.status(400).json({ message: 'Double elimination requer ao menos 2 participantes' });
+    // Rodada 1 igual ao single; perdedores vão para chave de perdedores (gerenciado manualmente)
     const seeded = shuffle(players);
     for (let i = 0; i < seeded.length - 1; i += 2)
       matches.push({ tournament: tournament._id, playerA: seeded[i], playerB: seeded[i + 1], round: 1 });
 
   } else if (type === 'swiss') {
-    // Número par recomendado; se ímpar, um jogador recebe bye (folga)
+    // Emparelhamento aleatório rodada 1; se ímpar, último recebe bye
     const seeded = shuffle(players);
     for (let i = 0; i < seeded.length - 1; i += 2)
       matches.push({ tournament: tournament._id, playerA: seeded[i], playerB: seeded[i + 1], round: 1 });
-    // Se ímpar, último jogador recebe bye (partida sem oponente não é criada)
 
   } else if (type === 'round_robin') {
-    // Todos contra todos em rodada única
+    // Todos contra todos
     for (let i = 0; i < players.length; i++)
       for (let j = i + 1; j < players.length; j++)
         matches.push({ tournament: tournament._id, playerA: players[i], playerB: players[j], round: 1 });
 
   } else if (type === 'draft' || type === 'sealed') {
-    // Emparelhamento aleatório; draft/sealed são formatos de construção, as partidas seguem chaveamento simples
+    // Chaveamento aleatório; formato de construção de deck
     const seeded = shuffle(players);
     for (let i = 0; i < seeded.length - 1; i += 2)
       matches.push({ tournament: tournament._id, playerA: seeded[i], playerB: seeded[i + 1], round: 1 });
 
   } else if (type === 'ladder') {
-    // Ladder: emparelha jogadores adjacentes no ranking (posição 1 vs 2, 3 vs 4, ...)
+    // Emparelha jogadores adjacentes no ranking
     for (let i = 0; i < players.length - 1; i += 2)
       matches.push({ tournament: tournament._id, playerA: players[i], playerB: players[i + 1], round: 1 });
   }

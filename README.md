@@ -1,4 +1,4 @@
-# CONNECT-PLAY vs 1.0.0
+# CONNECT-PLAY vs 1.2.0
 
 ---
 

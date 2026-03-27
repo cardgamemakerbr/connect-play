@@ -41,6 +41,16 @@ export default function Tournaments() {
     }
   };
 
+  const deleteTournament = async (id) => {
+    if (!window.confirm('Tem certeza que deseja deletar este torneio?')) return;
+    try {
+      await api.delete(`/tournaments/${id}`);
+      setTournaments(tournaments.filter(t => t._id !== id));
+    } catch (e) {
+      alert(e.response?.data?.message || 'Erro ao deletar torneio');
+    }
+  };
+
   return (
     <div style={{ padding: 24 }}>
       <h2>Torneios</h2>
@@ -68,6 +78,7 @@ export default function Tournaments() {
             <strong>{t.name}</strong> — {t.type} — {t.status}
             <button onClick={() => navigate(`/tournaments/${t._id}`)}>Ver</button>
             {t.status === 'open' && <button onClick={() => join(t._id)}>Inscrever</button>}
+            {role === 'admin' && <button onClick={() => deleteTournament(t._id)} style={{ marginLeft: 8, color: 'red' }}>Deletar</button>}
           </li>
         ))}
       </ul>
