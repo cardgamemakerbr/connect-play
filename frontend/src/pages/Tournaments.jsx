@@ -16,7 +16,7 @@ const TYPE_DESCRIPTIONS = {
 
 export default function Tournaments() {
   const [tournaments, setTournaments] = useState([]);
-  const [form, setForm] = useState({ name: '', type: 'swiss', startDate: '', endDate: '', maxParticipants: '' });
+  const [form, setForm] = useState({ name: '', type: 'swiss', startDate: '', endDate: '', maxParticipants: '', ladder_max_rounds: 4 });
   const [showForm, setShowForm] = useState(false);
   const role = localStorage.getItem('role');
   const navigate = useNavigate();
@@ -69,6 +69,9 @@ export default function Tournaments() {
           <input type="date" value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} />
           <input type="date" value={form.endDate} onChange={e => setForm({ ...form, endDate: e.target.value })} />
           <input type="number" placeholder="Máx. participantes" value={form.maxParticipants} onChange={e => setForm({ ...form, maxParticipants: e.target.value })} />
+          {form.type === 'ladder' && (
+            <input type="number" placeholder="Máx. rodadas (mín. 4)" min="4" value={form.ladder_max_rounds} onChange={e => setForm({ ...form, ladder_max_rounds: Math.max(4, parseInt(e.target.value) || 4) })} />
+          )}
           <button type="submit">Criar</button>
         </form>
       )}

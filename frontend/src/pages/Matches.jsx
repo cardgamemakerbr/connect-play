@@ -60,6 +60,7 @@ export default function Matches() {
       <h2>Partidas — {tournament?.name}</h2>
       <p>Tipo: <strong>{type}</strong> | Status: {tournament?.status}
         {type === 'swiss' && tournament?.swiss_rounds ? ` | Rodadas: ${tournament.swiss_rounds}` : ''}
+        {type === 'ladder' && tournament?.ladder_max_rounds ? ` | Máx. Rodadas: ${tournament.ladder_max_rounds}` : ''}
       </p>
 
       {/* Ranking Ladder */}
@@ -147,7 +148,7 @@ export default function Matches() {
                     <span style={{ marginLeft: 12 }}>
                       <button onClick={() => setResult(m._id, m.playerA._id)} style={{ marginRight: 4 }}>Win {m.playerA?.login}</button>
                       <button onClick={() => setResult(m._id, m.playerB._id)} style={{ marginRight: 4 }}>Win {m.playerB?.login}</button>
-                      {['swiss', 'round_robin'].includes(type) && (
+                      {['swiss', 'round_robin', 'ladder'].includes(type) && (
                         <button onClick={() => setDraw(m._id)} style={{ color: '#888' }}>Empate</button>
                       )}
                     </span>

@@ -182,15 +182,16 @@ router.put('/:id/result', auth(['admin', 'organizer']), async (req, res) => {
   // ── ROUND ROBIN ──────────────────────────────────────────────────────────────
   else if (type === 'round_robin') {
     const allMatches = await Match.find({ tournament: match.tournament });
-    if (allMatches.every(m => m.status === 'completed'))
+    const allDone = allMatches.length > 0 && allMatches.every(m => m.status === 'completed');
+    if (allDone)
       await Tournament.findByIdAndUpdate(match.tournament, { status: 'closed' });
   }
 
   // ── LADDER ───────────────────────────────────────────────────────────────────
   else if (type === 'ladder') {
-    // Atualiza ranking
+    // Atualiza ranking (empate não muda posições)
     const ranking = tournament.ladder_ranking.map(String);
-    if (winnerId && loserId) {
+    if (!isDraw && winnerId && loserId) {
       const winnerPos = ranking.indexOf(String(winnerId));
       const loserPos = ranking.indexOf(String(loserId));
       if (winnerPos > loserPos) {
@@ -201,20 +202,24 @@ router.put('/:id/result', auth(['admin', 'organizer']), async (req, res) => {
       }
     }
 
-    // Ao completar toda a rodada, gera nova rodada com pares adjacentes do ranking atualizado
+    // Ao completar toda a rodada, verifica se atingiu o máximo de rodadas
     const roundMatches = await Match.find({ tournament: match.tournament, round: match.round });
     if (roundMatches.every(m => m.status === 'completed')) {
-      const updatedRanking = tournament.ladder_ranking.map(String);
-      const nextRound = match.round + 1;
-      const nextMatches = [];
-      // Alterna o offset a cada rodada para que todos se enfrentem ao longo do tempo
-      const offset = (match.round % 2 === 0) ? 0 : 1;
-      for (let i = offset; i < updatedRanking.length - 1; i += 2)
-        nextMatches.push({ tournament: match.tournament, playerA: updatedRanking[i], playerB: updatedRanking[i + 1], round: nextRound });
-      if (nextMatches.length > 0) {
-        const created = await Match.insertMany(nextMatches);
-        for (const m of created)
-          await publish('match.scheduled', { matchId: m._id, tournament: m.tournament, playerA: m.playerA, playerB: m.playerB, round: m.round });
+      const maxRounds = tournament.ladder_max_rounds || 4;
+      if (match.round >= maxRounds) {
+        await Tournament.findByIdAndUpdate(match.tournament, { status: 'closed' });
+      } else {
+        const updatedRanking = tournament.ladder_ranking.map(String);
+        const nextRound = match.round + 1;
+        const nextMatches = [];
+        const offset = (match.round % 2 === 0) ? 0 : 1;
+        for (let i = offset; i < updatedRanking.length - 1; i += 2)
+          nextMatches.push({ tournament: match.tournament, playerA: updatedRanking[i], playerB: updatedRanking[i + 1], round: nextRound });
+        if (nextMatches.length > 0) {
+          const created = await Match.insertMany(nextMatches);
+          for (const m of created)
+            await publish('match.scheduled', { matchId: m._id, tournament: m.tournament, playerA: m.playerA, playerB: m.playerB, round: m.round });
+        }
       }
     }
   }
@@ -277,6 +282,8 @@ router.post('/generate/:tournamentId', auth(['admin', 'organizer']), async (req,
     }
 
   } else if (type === 'ladder') {
+    const maxRounds = Math.max(4, parseInt(req.body.ladder_max_rounds) || 4);
+    await Tournament.findByIdAndUpdate(tournament._id, { ladder_max_rounds: maxRounds });
     tournament.ladder_ranking = [...players];
     await tournament.save();
     for (let i = 0; i < players.length - 1; i += 2)

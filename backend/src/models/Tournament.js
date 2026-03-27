@@ -15,6 +15,7 @@ const tournamentSchema = new mongoose.Schema({
   participants: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   ladder_ranking: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   swiss_rounds: { type: Number, default: 0 },
+  ladder_max_rounds: { type: Number, default: 4 },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Tournament', tournamentSchema);
