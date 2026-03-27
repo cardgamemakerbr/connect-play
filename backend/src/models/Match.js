@@ -7,6 +7,7 @@ const matchSchema = new mongoose.Schema({
   winner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   scheduledAt: Date,
   round: Number,
+  bracket: { type: String, enum: ['winners', 'losers', 'grand_final'], default: 'winners' },
   status: { type: String, enum: ['scheduled', 'completed'], default: 'scheduled' },
 }, { timestamps: true });
 

@@ -5,7 +5,8 @@ const auth = require('../middlewares/auth');
 router.get('/', async (req, res) => {
   const tournaments = await Tournament.find()
     .populate('organizer', 'name')
-    .populate('participants', 'name login');
+    .populate('participants', 'name login')
+    .populate('ladder_ranking', 'name login');
   res.json(tournaments);
 });
 

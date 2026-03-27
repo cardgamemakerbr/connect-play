@@ -13,6 +13,7 @@ const tournamentSchema = new mongoose.Schema({
   status: { type: String, enum: ['open', 'ongoing', 'closed'], default: 'open' },
   organizer: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   participants: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  ladder_ranking: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
 }, { timestamps: true });
 
 module.exports = mongoose.model('Tournament', tournamentSchema);
