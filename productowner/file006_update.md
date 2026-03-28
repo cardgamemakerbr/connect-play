@@ -12,4 +12,10 @@
         - Azul para icones e botões -completado
     - Utilizar mais icones, emoji e ilustrações na comunicação visual da interface. -completado
 
+    2.1 Precisa implementa o mesmo estilo visual nas telas dos torneios e nas partida para manter a indentidade da aplicação. -completado
+
+    2.2 Pode fazer uma area de pódio para ficar bem ludico no visual de cada torneio. -completado
+
+    2.3 No perfil do usuario aparece os trofeis de campeao e as medalhas de participação com o nome e data do torneios. -completado
+
 3 Criar um sistema de notificações para os jogadores, informando sobre novos torneios, resultados e mensagens importantes. -completado

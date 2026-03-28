@@ -18,7 +18,10 @@ router.delete('/:id', auth(['admin']), async (req, res) => {
 });
 
 router.get('/me', auth(), async (req, res) => {
-  const user = await User.findById(req.user.id).select('-password').populate('trophies');
+  const user = await User.findById(req.user.id).select('-password').populate({
+    path: 'trophies',
+    populate: { path: 'tournament', select: 'name type' },
+  });
   res.json(user);
 });
 
